@@ -1,0 +1,41 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: nhs-dashboard-backend
+    ports:
+      - "5001:5001" # Expose backend port
+    volumes:
+      - ./backend/instance:/app/instance # Persist the SQLite database
+    environment:
+      - FLASK_ENV=development # Or production
+      - SECRET_KEY=a_more_secure_secret_key_for_compose # Use a better key
+    networks:
+      - nhs-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile # Assuming a Dockerfile exists in frontend
+    container_name: nhs-dashboard-frontend
+    ports:
+      - "3000:3000" # Expose frontend dev server port
+    volumes:
+      - ./frontend:/app # Mount frontend code for hot-reloading
+      - /app/node_modules # Don't mount node_modules from host
+    depends_on:
+      - backend
+    environment:
+      - VITE_BACKEND_URL=http://backend:5001 # Frontend needs this
+      - CHOKIDAR_USEPOLLING=true # Helps with hot-reloading in Docker volumes
+    # Command override for development to start dev server
+    # The production CMD is in the Dockerfile
+    command: npm run dev -- --host
+    networks:
+      - nhs-network
+
+networks:
+  nhs-network:
+    driver: bridge 

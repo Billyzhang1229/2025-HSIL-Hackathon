@@ -1,0 +1,7 @@
+Flask
+Flask-SocketIO==5.3.6
+Flask-SQLAlchemy
+Flask-Cors
+python-dotenv
+eventlet # Required by Flask-SocketIO for production/async mode
+APScheduler # For running the simulator periodically 
