@@ -1,5 +1,7 @@
-import { useState, useEffect } from 'react';
-import { Card, Grid, Title, Text, Badge, Select, SelectItem, Button, Flex, LineChart } from "@tremor/react";
+import { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Card, Grid, Title, Text, Badge, Select, SelectItem, Button, Flex } from "@tremor/react";
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { HeartIcon, ArrowTrendingUpIcon, FunnelIcon, ArrowsUpDownIcon } from '@heroicons/react/24/solid';
 
 // --- Type Definitions (Copied from App.tsx) ---
@@ -57,8 +59,11 @@ function DashboardPage({ staffList, selectedStaffId, setSelectedStaffId }: Dashb
 
     // useEffect for fetching historical data (when selectedId or timeRange changes)
     useEffect(() => {
+        // Immediately clear previous data to show loading state / empty graph
+        setHistoricalData([]);
+
         if (selectedStaffId === null) {
-            setHistoricalData([]);
+            // setHistoricalData([]); // Already cleared above
             return;
         }
 
@@ -85,7 +90,7 @@ function DashboardPage({ staffList, selectedStaffId, setSelectedStaffId }: Dashb
                 setHistoricalData(data);
             } catch (error) {
                 console.error(`Failed to fetch historical data for Staff ID ${selectedStaffId}:`, error);
-                setHistoricalData([]);
+                setHistoricalData([]); // Ensure data is clear on error
             } finally {
                 setIsLoadingHistory(false);
             }
@@ -136,18 +141,19 @@ function DashboardPage({ staffList, selectedStaffId, setSelectedStaffId }: Dashb
 
     const selectedStaff = staffList.find(staff => staff.id === selectedStaffId);
 
-    // Chart Data Formatting (Copied from App.tsx)
-    const chartFormatter = (value: number | null) => (value !== null ? `${value}` : 'N/A');
-    const heartRateData = historicalData.map(d => ({
-        time: new Date(d.timestamp).toLocaleTimeString(),
-        'Heart Rate (bpm)': d.heart_rate,
-    }));
-    const hrvData = historicalData.map(d => ({
-        time: new Date(d.timestamp).toLocaleTimeString(),
-        'HRV (ms)': d.hrv,
-    }));
+    // Chart Data Formatting - Adapted for Recharts
+    const chartData = useMemo(() => historicalData.map(d => ({
+        time: new Date(d.timestamp).toLocaleTimeString([], { hour: '2-digit', minute:'2-digit', second: '2-digit' }), // Format time for XAxis
+        hr: d.heart_rate,
+        hrv: d.hrv,
+    })), [historicalData]);
 
-    // JSX structure (Copied and adapted from App.tsx)
+    // Simple Recharts Tooltip Formatter
+    const tooltipFormatter = (value: number | string | Array<number | string>, name: string) => {
+        return [`${value}${name === 'hr' ? ' bpm' : ' ms'}`, name === 'hr' ? 'Heart Rate' : 'HRV'];
+    };
+
+    // JSX structure
     return (
         <div className="flex flex-col md:flex-row w-full gap-6">
             {/* Left Column: Filters & Staff List */}
@@ -241,33 +247,65 @@ function DashboardPage({ staffList, selectedStaffId, setSelectedStaffId }: Dashb
 
                     {isLoadingHistory && <Text className="text-center py-8">Loading chart data...</Text>}
                     {!isLoadingHistory && !selectedStaff && <Text className="text-center py-8">Please select a staff member from the list.</Text>}
-                    {!isLoadingHistory && selectedStaff && historicalData.length === 0 && <Text className="text-center py-8">No historical data available for the selected period.</Text>}
+                    {!isLoadingHistory && selectedStaff && chartData.length === 0 && <Text className="text-center py-8">No historical data available for the selected period.</Text>}
 
-                    {!isLoadingHistory && selectedStaff && historicalData.length > 0 && (
-                        <Grid numItemsSm={1} numItemsLg={1} className="gap-4 mt-4">
-                            <LineChart
-                                data={heartRateData}
-                                index="time"
-                                categories={['Heart Rate (bpm)']}
-                                colors={['red']}
-                                valueFormatter={chartFormatter}
-                                yAxisWidth={40}
-                                showLegend={false}
-                                autoMinValue={true}
-                                allowDecimals={false}
-                            />
-                            <LineChart
-                                data={hrvData}
-                                index="time"
-                                categories={['HRV (ms)']}
-                                colors={['blue']}
-                                valueFormatter={chartFormatter}
-                                yAxisWidth={40}
-                                showLegend={false}
-                                autoMinValue={true}
-                                allowDecimals={false}
-                            />
-                        </Grid>
+                    {/* Replaced Tremor Charts with Recharts */}
+                    {!isLoadingHistory && selectedStaff && chartData.length > 0 && (
+                        <div className="mt-4" style={{ height: '500px' }}> {/* Increased height from 500px to 600px */}
+                            {/* Heart Rate Chart */}
+                            <div className="h-1/2">
+                                <Text className="font-medium">Heart Rate (bpm)</Text>
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={chartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                                        <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.5} />
+                                        <XAxis dataKey="time" fontSize={12} tick={{ fill: '#9ca3af' }} /* Gray ticks */ />
+                                        <YAxis domain={['dataMin - 5', 'dataMax + 5']} /* Dynamic Y-axis */ fontSize={12} tick={{ fill: '#9ca3af' }}/>
+                                        <Tooltip
+                                            cursor={{ stroke: '#cbd5e1', strokeWidth: 1 }} /* Lighter cursor */
+                                            contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '0.375rem' }}
+                                            labelStyle={{ color: '#1f2937' }} /* Darker label */
+                                            formatter={tooltipFormatter}
+                                        />
+                                        <Line
+                                            type="monotone"
+                                            dataKey="hr"
+                                            stroke="#ef4444" /* Red */
+                                            strokeWidth={2}
+                                            dot={false}
+                                            isAnimationActive={true} // Enable animation (default)
+                                            animationDuration={700} // Adjust duration if needed
+                                        />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </div>
+
+                            {/* HRV Chart */}
+                             <div className="h-1/2 pt-4">
+                                <Text className="font-medium">Heart Rate Variability (ms)</Text>
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={chartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                                        <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.5}/>
+                                        <XAxis dataKey="time" fontSize={12} tick={{ fill: '#9ca3af' }} />
+                                        <YAxis domain={['dataMin - 5', 'dataMax + 5']} fontSize={12} tick={{ fill: '#9ca3af' }}/>
+                                         <Tooltip
+                                            cursor={{ stroke: '#cbd5e1', strokeWidth: 1 }}
+                                            contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '0.375rem' }}
+                                            labelStyle={{ color: '#1f2937' }}
+                                            formatter={tooltipFormatter}
+                                        />
+                                        <Line
+                                            type="monotone"
+                                            dataKey="hrv"
+                                            stroke="#3b82f6" /* Blue */
+                                            strokeWidth={2}
+                                            dot={false}
+                                            isAnimationActive={true}
+                                            animationDuration={700}
+                                        />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
                     )}
                 </Card>
             </div>

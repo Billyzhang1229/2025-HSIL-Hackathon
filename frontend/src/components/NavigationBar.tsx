@@ -16,7 +16,7 @@ function NavigationBar() {
                     Dashboard View
                  </NavLink>
                  <NavLink to="/classic" className={navLinkClass}>
-                    Classic Card View
+                    Card View
                  </NavLink>
                  {/* Add more links here if needed */}
             </Flex>

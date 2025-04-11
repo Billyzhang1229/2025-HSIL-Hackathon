@@ -202,7 +202,7 @@ function App() {
         <Flex flexDirection="col" alignItems='start' className="gap-6">
           {/* Header with NavigationBar */}
           <Flex justifyContent="between" alignItems="start" className="w-full">
-            <Title className="text-ai-primary">NHS Wearable Dashboard</Title>
+            <Title className="text-ai-primary text-2xl">St. Samoht's Hospital Wellness Hub</Title>
             <Badge color={isConnected ? 'emerald' : 'red'} size="sm">
               {isConnected ? 'Live Connection' : 'Disconnected'}
             </Badge>
