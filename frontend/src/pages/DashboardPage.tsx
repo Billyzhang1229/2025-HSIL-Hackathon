@@ -69,11 +69,47 @@ interface DashboardPageProps {
     setSelectedStaffId: (id: number | null) => void;
 }
 
+// Define the keys for sorting
+type SortKey = 'status' | 'name' | 'mwi' | 'hr' | 'hrv' | 'sleep_index' | 'steadiness';
+type SortDirection = 'asc' | 'desc';
+
+// Define base labels and default directions
+const SORT_BASE_LABELS: { [key in SortKey]: string } = {
+    status: "Status",
+    name: "Name",
+    mwi: "MW Index",
+    hr: "Heart Rate",
+    hrv: "HRV",
+    sleep_index: "Sleep Index",
+    steadiness: "Steadiness"
+};
+
+const DEFAULT_SORT_DIRECTIONS: { [key in SortKey]: SortDirection } = {
+    status: 'asc', // Critical first
+    name: 'asc',   // A-Z
+    mwi: 'desc',  // High first
+    hr: 'asc',    // Low first (more concerning?)
+    hrv: 'desc',  // High first
+    sleep_index: 'desc', // High first
+    steadiness: 'desc' // High first
+};
+
+// Helper to generate the full label with direction
+const getSortLabel = (key: SortKey, direction: SortDirection): string => {
+    const baseLabel = SORT_BASE_LABELS[key];
+    if (key === 'status') return `${baseLabel} (Alert First)`;
+    if (key === 'name') return `${baseLabel} (${direction === 'asc' ? 'A-Z' : 'Z-A'})`;
+    // For numerical fields
+    const suffix = direction === 'desc' ? '(High-Low)' : '(Low-High)';
+    return `${baseLabel} ${suffix}`;
+};
+
 // --- DashboardPage Component ---
 function DashboardPage({ staffList, selectedStaffId, setSelectedStaffId }: DashboardPageProps) {
     // State specific to this page
     const [filterRole, setFilterRole] = useState<string>('All');
-    const [sortOrder, setSortOrder] = useState<SortOrder>('status');
+    const [sortKey, setSortKey] = useState<SortKey>('status');
+    const [sortDirection, setSortDirection] = useState<SortDirection>(DEFAULT_SORT_DIRECTIONS['status']);
     const [timeRange, setTimeRange] = useState<TimeRange>('5m');
     const [historicalData, setHistoricalData] = useState<WearablePoint[]>([]);
     const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(false);
@@ -174,11 +210,11 @@ function DashboardPage({ staffList, selectedStaffId, setSelectedStaffId }: Dashb
 
     // Compute Display List using useMemo
     const displayList = useMemo(() => {
-        console.log("[DashboardPage] Recalculating displayList via useMemo...");
+        console.log(`[DashboardPage] Recalculating displayList via useMemo (Sort: ${sortKey} ${sortDirection})...`);
         const sorted = [...staffList]
             .filter(staff => filterRole === 'All' || staff.role === filterRole)
             .sort((a, b) => {
-                // Handle null/undefined gracefully - treat as lowest value for sorting
+                // Handle null/undefined gracefully
                 const safeA = {
                     mwi: a.mental_wellness_index ?? -Infinity,
                     hr: a.current_heart_rate ?? Infinity,
@@ -194,28 +230,38 @@ function DashboardPage({ staffList, selectedStaffId, setSelectedStaffId }: Dashb
                     steadiness: b.current_steadiness ?? -Infinity
                 };
 
-                switch (sortOrder) {
+                let comparison = 0;
+                switch (sortKey) {
                     case 'status':
-                        return stressLevelOrder[a.stress_level] - stressLevelOrder[b.stress_level] || a.name.localeCompare(b.name);
+                        comparison = stressLevelOrder[a.stress_level] - stressLevelOrder[b.stress_level];
+                        break;
                     case 'name':
-                        return a.name.localeCompare(b.name);
+                        comparison = a.name.localeCompare(b.name);
+                        break;
                     case 'mwi':
-                        return safeB.mwi - safeA.mwi || a.name.localeCompare(b.name); // Descending
+                        comparison = safeA.mwi - safeB.mwi;
+                        break;
                     case 'hr':
-                        return safeA.hr - safeB.hr || a.name.localeCompare(b.name); // Ascending
+                        comparison = safeA.hr - safeB.hr;
+                        break;
                     case 'hrv':
-                        return safeB.hrv - safeA.hrv || a.name.localeCompare(b.name); // Descending
+                        comparison = safeA.hrv - safeB.hrv;
+                        break;
                     case 'sleep_index':
-                        return safeB.sleep_index - safeA.sleep_index || a.name.localeCompare(b.name); // Descending
+                        comparison = safeA.sleep_index - safeB.sleep_index;
+                        break;
                     case 'steadiness':
-                        return safeB.steadiness - safeA.steadiness || a.name.localeCompare(b.name); // Descending
-                    default:
-                        return 0;
+                        comparison = safeA.steadiness - safeB.steadiness;
+                        break;
                 }
+
+                // Apply direction (and secondary sort by name)
+                const directionMultiplier = sortDirection === 'asc' ? 1 : -1;
+                return comparison * directionMultiplier || a.name.localeCompare(b.name);
             });
         console.log("[DashboardPage] Memoized displayList:", sorted);
         return sorted;
-    }, [staffList, filterRole, sortOrder]); // Dependencies for useMemo
+    }, [staffList, filterRole, sortKey, sortDirection]); // Added sortDirection dependency
 
     // This log now shows the memoized value
     // console.log("[DashboardPage] Calculated displayList:", displayList);
@@ -244,6 +290,18 @@ function DashboardPage({ staffList, selectedStaffId, setSelectedStaffId }: Dashb
         return [`${value}${unit}`, displayName];
     };
 
+    // Handler for Sort Select change
+    const handleSortChange = (newKey: SortKey) => {
+        if (newKey === sortKey) {
+            // Toggle direction if same key is selected
+            setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+        } else {
+            // Change key and reset direction to default for that key
+            setSortKey(newKey);
+            setSortDirection(DEFAULT_SORT_DIRECTIONS[newKey]);
+        }
+    };
+
     // JSX structure
     return (
         <div className="flex flex-col md:flex-row w-full gap-6" style={{ height: 'calc(100vh - 10rem)' }}>
@@ -260,9 +318,11 @@ function DashboardPage({ staffList, selectedStaffId, setSelectedStaffId }: Dashb
                                 <SelectItem key={role} value={role}>{role}</SelectItem>
                             ))}
                         </Select>
-                        <Select value={sortOrder} onValueChange={(value) => setSortOrder(value as SortOrder)} placeholder="Sort by...">
-                            {Object.entries(sortOptions).map(([key, label]) => (
-                                <SelectItem key={key} value={key}>{label}</SelectItem>
+                        <Select value={sortKey} onValueChange={(value) => handleSortChange(value as SortKey)} placeholder="Sort by...">
+                            {Object.keys(SORT_BASE_LABELS).map((key) => (
+                                <SelectItem key={key} value={key}>
+                                    {getSortLabel(key as SortKey, key === sortKey ? sortDirection : DEFAULT_SORT_DIRECTIONS[key as SortKey])}
+                                </SelectItem>
                             ))}
                         </Select>
                      </div>

@@ -1,0 +1,70 @@
+[
+  {
+    "name": "Dr. Alice Green",
+    "role": "Doctor"
+  },
+  {
+    "name": "Bob White",
+    "role": "Nurse"
+  },
+  {
+    "name": "Carol Black",
+    "role": "Nurse"
+  },
+  {
+    "name": "Dave Gray",
+    "role": "Technician"
+  },
+  {
+    "name": "Dr. Evelyn Reed",
+    "role": "Doctor"
+  },
+  {
+    "name": "Frank Miller",
+    "role": "Nurse"
+  },
+  {
+    "name": "Grace Hall",
+    "role": "Technician"
+  },
+  {
+    "name": "Henry Adams",
+    "role": "Admin"
+  },
+  {
+    "name": "Isabelle Moreau",
+    "role": "Nurse"
+  },
+  {
+    "name": "Javier Rodriguez",
+    "role": "Technician"
+  },
+  {
+    "name": "Kenji Tanaka",
+    "role": "Doctor"
+  },
+  {
+    "name": "Layla Hassan",
+    "role": "Admin"
+  },
+  {
+    "name": "Mohammed Khan",
+    "role": "Nurse"
+  },
+  {
+    "name": "Nadia Petrova",
+    "role": "Technician"
+  },
+  {
+    "name": "Dr. Chen Wei",
+    "role": "Doctor"
+  },
+  {
+    "name": "Li Mei",
+    "role": "Nurse"
+  },
+  {
+    "name": "Zhang Hao",
+    "role": "Technician"
+  }
+] 

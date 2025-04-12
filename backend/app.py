@@ -11,6 +11,7 @@ from flask_cors import CORS
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timedelta
 import logging
+import json
 
 # Setup logging
 logging.basicConfig(level=logging.DEBUG)
@@ -50,7 +51,7 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 from models import db, Staff, WearableData
 
 # Import simulator function
-from simulator import simulate_data
+from simulator import simulate_data, populate_historical_data
 
 # Associate db with app *after* app creation and config
 db.init_app(app)
@@ -75,19 +76,47 @@ def init_db():
             logger.error(f"Error during db.create_all(): {e}", exc_info=True)
             raise  # Re-raise the exception to see the problem
 
+        staff_created = False
         if Staff.query.count() == 0:
-            logger.info("No staff found. Adding sample staff...")
-            sample_staff = [
-                Staff(name="Dr. Alice Green", role="Doctor"),
-                Staff(name="Bob White", role="Nurse"),
-                Staff(name="Carol Black", role="Nurse"),
-                Staff(name="Dave Gray", role="Technician"),
-            ]
-            db.session.add_all(sample_staff)
-            db.session.commit()
-            logger.info("Sample staff added.")
+            logger.info("No staff found. Loading sample staff from staff_data.json...")
+            json_path = os.path.join(
+                basedir, "staff_data.json"
+            )  # Construct path to JSON
+            try:
+                with open(json_path, "r") as f:
+                    staff_data_from_json = json.load(f)
+
+                sample_staff = [
+                    Staff(name=staff_info["name"], role=staff_info["role"])
+                    for staff_info in staff_data_from_json
+                ]
+                db.session.add_all(sample_staff)
+                db.session.commit()
+                logger.info("Sample staff added from JSON file.")
+                staff_created = True  # Mark that staff were just created
+            except FileNotFoundError:
+                logger.error(f"Error: staff_data.json not found at {json_path}")
+            except json.JSONDecodeError:
+                logger.error(f"Error: Could not decode JSON from {json_path}")
+            except Exception as e:
+                logger.error(f"Error loading staff from JSON: {e}", exc_info=True)
+                db.session.rollback()  # Rollback if there was an error loading
         else:
             logger.info(f"Found {Staff.query.count()} staff members in the database.")
+
+        # Populate historical data ONLY if staff were just created AND historical data is empty
+        if staff_created and WearableData.query.count() == 0:
+            logger.info("Populating historical wearable data for the last 2 days...")
+            try:
+                populate_historical_data(app, db)
+                logger.info("Historical data population complete.")
+            except Exception as e:
+                logger.error(f"Error populating historical data: {e}", exc_info=True)
+                db.session.rollback()  # Rollback if population failed
+        elif WearableData.query.count() > 0:
+            logger.info(
+                f"Found existing wearable data ({WearableData.query.count()} records). Skipping historical population."
+            )
 
 
 # --- API Endpoints ---
@@ -100,23 +129,58 @@ def get_staff():
 
 @app.route("/api/staff/<int:staff_id>/data", methods=["GET"])
 def get_staff_data(staff_id):
-    """Returns recent wearable data for a specific staff member."""
-    # Default to last 1 hour, allow specifying time range via query params (e.g., ?minutes=10)
-    minutes_back = int(request.args.get("minutes", 60))
-    time_threshold = datetime.utcnow() - timedelta(minutes=minutes_back)
+    """Returns wearable data for a specific staff member.
+    Accepts optional 'minutes' query param to limit time range.
+    Accepts optional 'sample=true' query param to return fewer data points for long ranges.
+    If 'minutes' is not provided, returns all data (potentially sampled).
+    """
+    minutes_str = request.args.get("minutes")
+    should_sample = request.args.get("sample") == "true"
+    query = WearableData.query.filter(WearableData.staff_id == staff_id)
 
-    data = (
-        WearableData.query.filter(
-            WearableData.staff_id == staff_id, WearableData.timestamp >= time_threshold
+    time_limited = False
+    if minutes_str:
+        try:
+            minutes_back = int(minutes_str)
+            time_threshold = datetime.utcnow() - timedelta(minutes=minutes_back)
+            query = query.filter(WearableData.timestamp >= time_threshold)
+            logger.debug(
+                f"Fetching data for staff {staff_id} from last {minutes_back} minutes."
+            )
+            time_limited = True
+        except ValueError:
+            return jsonify({"error": "Invalid 'minutes' parameter"}), 400
+    else:
+        logger.debug(f"Fetching all data for staff {staff_id}.")
+        # No time filter needed
+
+    # Order before potentially sampling
+    query = query.order_by(WearableData.timestamp.asc())
+
+    # Fetch all potentially matching data first
+    all_matching_data = query.all()
+    total_points = len(all_matching_data)
+
+    # Apply sampling if requested AND not already limited to a very short time
+    # (Avoid sampling tiny datasets)
+    sampled_data = all_matching_data
+    if should_sample and total_points > 100:  # Only sample if > 100 points
+        # Simple sampling: aim for ~100-200 points max
+        sample_rate = max(1, total_points // 150)  # Calculate N for every Nth point
+        sampled_data = all_matching_data[::sample_rate]
+        logger.debug(
+            f"Sampling applied: {len(sampled_data)} points returned from {total_points} (rate ~{sample_rate})."
         )
-        .order_by(WearableData.timestamp.asc())
-        .all()
-    )
+    elif should_sample:
+        logger.debug(
+            f"Sampling requested but not applied: {total_points} points <= 100."
+        )
 
-    if not data and Staff.query.get(staff_id) is None:
+    # Check if staff member exists only if no data is found *after* potential filtering
+    if not sampled_data and Staff.query.get(staff_id) is None:
         return jsonify({"error": "Staff member not found"}), 404
 
-    return jsonify([d.to_dict() for d in data])
+    return jsonify([d.to_dict() for d in sampled_data])
 
 
 # --- SocketIO Events ---
