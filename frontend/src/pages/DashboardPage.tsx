@@ -97,7 +97,7 @@ const DEFAULT_SORT_DIRECTIONS: { [key in SortKey]: SortDirection } = {
 // Helper to generate the full label with direction
 const getSortLabel = (key: SortKey, direction: SortDirection): string => {
     const baseLabel = SORT_BASE_LABELS[key];
-    if (key === 'status') return `${baseLabel} (Alert First)`;
+    if (key === 'status') return `${baseLabel}`;
     if (key === 'name') return `${baseLabel} (${direction === 'asc' ? 'A-Z' : 'Z-A'})`;
     // For numerical fields
     const suffix = direction === 'desc' ? '(High-Low)' : '(Low-High)';
@@ -367,9 +367,16 @@ function DashboardPage({ staffList, selectedStaffId, setSelectedStaffId }: Dashb
             <div className="w-full md:w-2/3 lg:w-3/4 flex flex-col gap-4">
                 <Card className="flex-grow flex flex-col">
                     <Flex justifyContent="between" alignItems="start" className="mb-4 flex-shrink-0">
-                       <Title className="text-left w-full">
-                          {selectedStaff ? `Wellness Trends: ${selectedStaff.name}` : 'Select Staff to View Trends'}
-                       </Title>
+                            <Title className="text-left w-full">
+                            {selectedStaff && (
+                                <Badge className="mr-2" color={getStressColor(selectedStaff.stress_level)} size="sm">
+                                    {selectedStaff.stress_level}
+                                </Badge>
+                            )}
+                                {selectedStaff ? <><strong>{selectedStaff.name}</strong></> : 'Select Staff to View Trends'}
+                                
+                            </Title>
+                            
                         {selectedStaff && (
                             <Flex justifyContent="end" className="gap-2">
                                 {(['1m', '5m', '10m', '30m', '1h', '6h', '1d', '2d', 'All'] as TimeRange[]).map(range => (
@@ -449,7 +456,7 @@ function DashboardPage({ staffList, selectedStaffId, setSelectedStaffId }: Dashb
                                         chartData={chartData}
                                         dataKey="sleep_index"
                                         strokeColor="#8b5cf6" // Purple
-                                        chartTitle="Sleep Index (Last Night)"
+                                        chartTitle="Sleep Index"
                                         tooltipFormatter={tooltipFormatter}
                                         yAxisProps={{ domain: [0, 10], tick: { fill: '#8b5cf6'} }}
                                         showXAxis={true} // Show X-axis on the last chart
